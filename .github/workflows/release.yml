@@ -1,0 +1,24 @@
+name: Build and Release Zip
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create zip archive
+        run: |
+          zip -r tic-tac-toe-${GITHUB_REF_NAME}.zip index.html style.css script.js README.md TicTacToeSnap.PNG
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: tic-tac-toe-${GITHUB_REF_NAME}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

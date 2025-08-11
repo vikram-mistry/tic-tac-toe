@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tic Tac Toe — Two Player</title>
+<style>
+  :root{
+    --bg1:#0f172a; --bg2:#1e293b;
+    --card:#131722;
+    --light-cell:#f1f5f9;
+    --muted:#9aa6b2;
+    --red:#e11d48;
+    --blue:#2563eb;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    background: linear-gradient(135deg,var(--bg1),var(--bg2));
+    background-size: 400% 400%;
+    animation: bgMove 12s ease infinite;
+    color:#e6eef4;
+    padding:24px;
+  }
+  @keyframes bgMove {
+    0%{background-position:0% 50%}
+    50%{background-position:100% 50%}
+    100%{background-position:0% 50%}
+  }
+
+  .app{
+    width:min(760px,96%);
+    background:var(--card);
+    border-radius:14px;
+    padding:22px;
+    box-shadow:0 12px 50px rgba(2,6,23,0.6);
+    text-align:center;
+    position:relative;
+  }
+
+  h1{margin:0 0 6px;font-size:34px}
+  .sub{color:var(--muted);margin-bottom:12px}
+
+  .score-row{display:flex;gap:12px;justify-content:center;align-items:center;margin-bottom:10px;color:var(--muted)}
+  .score {background:rgba(255,255,255,0.03);padding:8px 14px;border-radius:8px;min-width:110px}
+
+  .board {
+    width:360px;
+    height:360px;
+    margin:14px auto;
+    background:#cbd5e1;
+    padding:10px;
+    border-radius:16px;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:12px;
+    position:relative;
+  }
+
+  .cell{
+    background:var(--light-cell);
+    border-radius:10px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:56px;
+    font-weight:700;
+    cursor:pointer;
+    user-select:none;
+    position:relative;
+    z-index:1;
+  }
+  .cell[data-player="X"]{color:var(--red)}
+  .cell[data-player="O"]{color:var(--blue)}
+
+  .controls{display:flex;gap:10px;justify-content:center;margin-top:14px}
+  button{padding:10px 14px;border-radius:10px;border:none;background:#ffffff12;color:inherit;cursor:pointer}
+  .primary{background:#ffffff22}
+
+  /* Winning line */
+  .win-line{
+    position:absolute;
+    height:10px;
+    border-radius:8px;
+    transform-origin:center center;
+    z-index:3;
+    box-shadow: 0 0 18px rgba(255,255,255,0.85);
+  }
+
+  /* Celebration overlay */
+  .celebrate{
+    position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4;
+  }
+  .spark{
+    position:absolute;width:8px;height:8px;border-radius:50%;animation:pop 700ms cubic-bezier(.2,.9,.3,1) forwards;
+  }
+  @keyframes pop{ to{ transform: translate(var(--tx),var(--ty)) scale(0); opacity:0; } }
+
+  .status{margin-top:8px;font-weight:600}
+  footer{margin-top:12px;color:var(--muted);font-size:13px}
+  @media (max-width:480px){
+    .board{width:300px;height:300px}
+    h1{font-size:24px}
+  }
+</style>
+</head>
+<body>
+  <div class="app" role="application" aria-label="Tic Tac Toe two player">
+    <h1 id="title">Player X vs Player O</h1>
+    <div class="sub" id="subtitle">X is <span style="color:var(--red)">Red</span> — O is <span style="color:var(--blue)">Blue</span></div>
+
+    <div class="score-row">
+      <div class="score"> <div style="font-size:12px;color:var(--muted)">Player X (Red)</div> <div id="scoreX" style="font-size:20px">0</div></div>
+      <div class="score"> <div style="font-size:12px;color:var(--muted)">Draws</div> <div id="scoreD" style="font-size:20px">0</div></div>
+      <div class="score"> <div style="font-size:12px;color:var(--muted)">Player O (Blue)</div> <div id="scoreO" style="font-size:20px">0</div></div>
+    </div>
+
+    <div class="board" id="board" aria-label="Tic tac toe board"></div>
+
+    <div class="status" id="status">Turn: <span id="turnLabel">Player X</span></div>
+
+    <div class="controls">
+      <button id="newRoundBtn" class="primary">New Round</button>
+      <button id="editNamesBtn">Edit Names</button>
+      <button id="resetBtn">Reset Scores</button>
+    </div>
+
+    <footer>Scores persist in your browser (localStorage).</footer>
+  </div>
+
+<script>
+/* Tic Tac Toe v2 — bugfixes:
+   - precise win line using getBoundingClientRect centers
+   - prompt names only once per newRound (no duplicate prompts)
+   - win line color matches winner; sparks in winner color
+   - responsive: redraws win line on resize while visible
+*/
+
+const WIN_LINES = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+const LS_SCORES = 'ttt_scores_v2';
+const LS_PLAYERS = 'ttt_players_v2';
+
+const boardEl = document.getElementById('board');
+const statusEl = document.getElementById('status');
+const turnLabel = document.getElementById('turnLabel');
+const scoreXEl = document.getElementById('scoreX');
+const scoreOEl = document.getElementById('scoreO');
+const scoreDEl = document.getElementById('scoreD');
+const titleEl = document.getElementById('title');
+
+let cells = [];
+let state = Array(9).fill(null);
+let current = 'X';
+let winLineEl = null;
+let celebrateEl = null;
+
+// load scores / players
+let scores = JSON.parse(localStorage.getItem(LS_SCORES) || '{"X":0,"O":0,"D":0}');
+let players = JSON.parse(localStorage.getItem(LS_PLAYERS) || '{"X":"Player X","O":"Player O"}');
+
+// build board
+function createBoard(){
+  boardEl.innerHTML = '';
+  cells = [];
+  for (let i=0;i<9;i++){
+    const d = document.createElement('div');
+    d.className = 'cell';
+    d.setAttribute('data-index', i);
+    d.setAttribute('role','button');
+    d.addEventListener('click', ()=> onCellClick(i));
+    boardEl.appendChild(d);
+    cells.push(d);
+  }
+}
+
+// cell click
+function onCellClick(idx){
+  if (state[idx] || checkWinner()) return;
+  state[idx] = current;
+  render();
+  const winner = checkWinner();
+  if (winner){
+    scores[winner] += 1;
+    localStorage.setItem(LS_SCORES, JSON.stringify(scores));
+    updateScores();
+    statusEl.textContent = `Winner: ${players[winner]}!`;
+    drawWinLine();        // precise line
+    celebrate(winner);   // sparks
+  } else if (state.every(Boolean)){
+    scores.D += 1;
+    localStorage.setItem(LS_SCORES, JSON.stringify(scores));
+    updateScores();
+    statusEl.textContent = "It's a draw!";
+  } else {
+    current = current === 'X' ? 'O' : 'X';
+    turnLabel.textContent = players[current];
+    statusEl.textContent = `Turn: ${players[current]}`;
+  }
+}
+
+// render board state
+function render(){
+  cells.forEach((c,i)=>{
+    c.textContent = state[i] || '';
+    if (state[i]) c.dataset.player = state[i];
+    else delete c.dataset.player;
+  });
+}
+
+// check winner or null
+function checkWinner(){
+  for (const line of WIN_LINES){
+    const [a,b,c] = line;
+    if (state[a] && state[a] === state[b] && state[b] === state[c]) return state[a];
+  }
+  return null;
+}
+
+// draw perfect win line over the winning trio
+function drawWinLine(){
+  // remove existing if any
+  if (winLineEl) winLineEl.remove();
+
+  // find winner line (first matching)
+  const winnerLine = WIN_LINES.find(line=>{
+    const [a,b,c] = line;
+    return state[a] && state[a] === state[b] && state[b] === state[c];
+  });
+  if (!winnerLine) return;
+
+  // compute center coordinates relative to board
+  const rects = winnerLine.map(i => cells[i].getBoundingClientRect());
+  const boardRect = boardEl.getBoundingClientRect();
+
+  const c0 = {
+    x: rects[0].left + rects[0].width/2 - boardRect.left,
+    y: rects[0].top  + rects[0].height/2 - boardRect.top
+  };
+  const c2 = {
+    x: rects[2].left + rects[2].width/2 - boardRect.left,
+    y: rects[2].top  + rects[2].height/2 - boardRect.top
+  };
+
+  // midpoint and geometry
+  const midX = (c0.x + c2.x) / 2;
+  const midY = (c0.y + c2.y) / 2;
+  const dx = c2.x - c0.x;
+  const dy = c2.y - c0.y;
+  const length = Math.hypot(dx, dy);
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+  // create element and position its CENTER at midpoint
+  winLineEl = document.createElement('div');
+  winLineEl.className = 'win-line';
+  // color by winner
+  const winner = state[winnerLine[0]];
+  const color = winner === 'X' ? getComputedStyle(document.documentElement).getPropertyValue('--red') || '#e11d48' : getComputedStyle(document.documentElement).getPropertyValue('--blue') || '#2563eb';
+  winLineEl.style.background = color;
+  winLineEl.style.boxShadow = `0 0 18px ${color}`;
+
+  // width = distance between centers, left/top = midpoint, transform to center & rotate
+  winLineEl.style.width = length + 'px';
+  winLineEl.style.left = midX + 'px';
+  winLineEl.style.top = midY + 'px';
+  winLineEl.style.transform = `translate(-50%,-50%) rotate(${angle}deg)`;
+  boardEl.appendChild(winLineEl);
+}
+
+// celebration sparks in winner color
+function celebrate(winner){
+  if (celebrateEl) celebrateEl.remove();
+  celebrateEl = document.createElement('div');
+  celebrateEl.className = 'celebrate';
+  boardEl.appendChild(celebrateEl);
+
+  const color = winner === 'X' ? 'var(--red)' : 'var(--blue)';
+  for (let i=0;i<40;i++){
+    const s = document.createElement('div');
+    s.className = 'spark';
+    s.style.background = color;
+    s.style.left = Math.random()*100 + '%';
+    s.style.top = Math.random()*100 + '%';
+    s.style.setProperty('--tx', (Math.random()*220 - 110) + 'px');
+    s.style.setProperty('--ty', (Math.random()*220 - 110) + 'px');
+    celebrateEl.appendChild(s);
+  }
+  // remove after 3s
+  setTimeout(()=>{ if (celebrateEl) celebrateEl.remove(); celebrateEl = null; }, 3000);
+}
+
+// update score display
+function updateScores(){
+  scoreXEl.textContent = scores.X;
+  scoreOEl.textContent = scores.O;
+  scoreDEl.textContent = scores.D || 0;
+}
+
+// ask for names (called ONLY when starting a new round or when editing)
+function askNames(){
+  // prompt for each (single prompt each) — user asked to edit on new round
+  const nameX = prompt("Enter name for Player X (Red):", players.X) || players.X;
+  const nameO = prompt("Enter name for Player O (Blue):", players.O) || players.O;
+  players.X = nameX;
+  players.O = nameO;
+  localStorage.setItem(LS_PLAYERS, JSON.stringify(players));
+  titleUpdate();
+}
+
+// update title / turn label
+function titleUpdate(){
+  titleEl.textContent = `${players.X} (Red) vs ${players.O} (Blue)`;
+  turnLabel.textContent = players[current];
+}
+
+// new round (prompts names ONCE per call)
+function newRound(){
+  askNames();                  // prompt once
+  if (winLineEl) { winLineEl.remove(); winLineEl = null; }
+  if (celebrateEl) { celebrateEl.remove(); celebrateEl = null; }
+  state = Array(9).fill(null);
+  current = 'X';
+  render();
+  statusEl.textContent = `Turn: ${players[current]}`;
+  titleUpdate();
+}
+
+// edit names without clearing board
+function editNames(){
+  const nx = prompt("Edit name for Player X (Red):", players.X) || players.X;
+  const no = prompt("Edit name for Player O (Blue):", players.O) || players.O;
+  players.X = nx; players.O = no;
+  localStorage.setItem(LS_PLAYERS, JSON.stringify(players));
+  titleUpdate();
+  // update current turn label if game in progress
+  turnLabel.textContent = players[current];
+}
+
+// reset scores
+function resetScores(){
+  if (!confirm("Reset all scores?")) return;
+  scores = {X:0,O:0,D:0};
+  localStorage.setItem(LS_SCORES, JSON.stringify(scores));
+  updateScores();
+}
+
+// redraw winline on resize if currently showing a winner
+window.addEventListener('resize', ()=>{
+  // only redraw if there is a winner line currently shown
+  if (checkWinner()) {
+    // small timeout to ensure layout has settled
+    setTimeout(()=> drawWinLine(), 80);
+  }
+});
+
+// attach buttons
+document.getElementById('newRoundBtn').addEventListener('click', ()=> newRound());
+document.getElementById('editNamesBtn').addEventListener('click', ()=> editNames());
+document.getElementById('resetBtn').addEventListener('click', ()=> resetScores());
+
+// init
+createBoard();
+updateScores();
+// Start the first round (this calls askNames exactly once)
+newRound();
+
+</script>
+</body>
+</html>

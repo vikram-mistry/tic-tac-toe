@@ -33,7 +33,7 @@ Just double-click index.html to play.
 ---
 
 ## 📸 Screenshot
-![Tic-Tac-Toe Screenshot](TicTacToe.PNG)
+![Tic-Tac-Toe Screenshot](TicTacToeSnap.PNG)
 
 ----
 
